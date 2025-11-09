@@ -1,0 +1,5 @@
+2025-01-09 10:30:45.123 UTC [12345] LOG:  duration: 234.567 ms  statement: SELECT * FROM users WHERE email = 'user@example.com'
+2025-01-09 10:30:46.456 UTC [12346] LOG:  duration: 45.123 ms  statement: SELECT id, name FROM products WHERE category = 'electronics'
+2025-01-09 10:30:47.789 UTC [12347] LOG:  duration: 567.890 ms  statement: SELECT * FROM orders WHERE user_id = 123 AND status = 'pending'
+2025-01-09 10:30:48.012 UTC [12348] LOG:  duration: 12.345 ms  statement: INSERT INTO logs (timestamp, message) VALUES ('2025-01-09 10:30:48', 'User login')
+2025-01-09 10:30:49.234 UTC [12349] LOG:  duration: 890.123 ms  statement: UPDATE users SET last_login = NOW() WHERE id = 123
