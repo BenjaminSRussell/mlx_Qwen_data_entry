@@ -42,7 +42,7 @@ def test_fingerprinter():
     print(f"  Tables found: {tables}")
     assert "users" in tables, "Should find 'users' table"
 
-    print("✓ QueryFingerprinter tests passed\n")
+    print("PASS: QueryFingerprinter tests\n")
 
 
 def test_log_parser():
@@ -76,7 +76,7 @@ def test_log_parser():
         assert first_log.execution_time_ms > 0, "Execution time should be > 0"
         assert first_log.success is True, "Log should be marked as successful"
 
-        print("✓ PostgresLogParser tests passed\n")
+        print("PASS: PostgresLogParser tests\n")
 
     finally:
         import os
@@ -131,7 +131,7 @@ def test_aggregator():
     assert snapshot.p95_latency_ms is not None, "P95 latency should be calculated"
     assert snapshot.impact_score > 0, "Impact score should be > 0"
 
-    print("✓ WorkloadAggregator tests passed\n")
+    print("PASS: WorkloadAggregator tests\n")
 
 
 if __name__ == "__main__":
@@ -139,12 +139,12 @@ if __name__ == "__main__":
         test_fingerprinter()
         test_log_parser()
         test_aggregator()
-        print("\n🎉 All manual tests passed!")
+        print("\nAll manual tests passed")
     except AssertionError as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\nTest failed: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

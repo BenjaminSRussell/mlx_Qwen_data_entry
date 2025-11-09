@@ -22,12 +22,11 @@ def cli(ctx, config):
     ctx.ensure_object(dict)
     ctx.obj['config_path'] = config
 
-    # Load configuration
     try:
         get_config(config)
-        console.print(f"[green]✓[/green] Configuration loaded from {config}")
+        console.print(f"[green]OK[/green] Configuration loaded from {config}")
     except Exception as e:
-        console.print(f"[red]✗[/red] Error loading configuration: {e}")
+        console.print(f"[red]ERROR[/red] Loading configuration: {e}")
         ctx.exit(1)
 
 
@@ -40,22 +39,18 @@ def init_db(ctx):
     try:
         console.print("[cyan]Initializing database schema...[/cyan]")
 
-        # Get metrics database
         db = get_metrics_db()
-
-        # Execute schema creation script
         schema_file = Path(__file__).parent.parent.parent / 'sql' / '001_create_schema.sql'
 
         if not schema_file.exists():
-            console.print(f"[red]✗[/red] Schema file not found: {schema_file}")
+            console.print(f"[red]ERROR[/red] Schema file not found: {schema_file}")
             return
 
         db.execute_script(str(schema_file))
-
-        console.print("[green]✓[/green] Database schema initialized successfully")
+        console.print("[green]OK[/green] Database schema initialized")
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error initializing database: {e}")
+        console.print(f"[red]ERROR[/red] Initializing database: {e}")
         raise
 
 
@@ -71,9 +66,7 @@ def profile(ctx, save):
         snapshots = profiler.create_snapshots()
 
         if snapshots:
-            console.print(f"[green]✓[/green] Created {len(snapshots)} workload snapshots")
-
-            # Show top 5
+            console.print(f"[green]OK[/green] Created {len(snapshots)} workload snapshots")
             table = Table(title="Top Workload Snapshots by Impact")
             table.add_column("Query Type", style="cyan")
             table.add_column("Executions", justify="right", style="magenta")
@@ -92,12 +85,12 @@ def profile(ctx, save):
 
             if save:
                 profiler.save_snapshots(snapshots)
-                console.print("[green]✓[/green] Snapshots saved to database")
+                console.print("[green]OK[/green] Snapshots saved to database")
         else:
-            console.print("[yellow]![/yellow] No snapshots created")
+            console.print("[yellow]WARN[/yellow] No snapshots created")
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error running profiler: {e}")
+        console.print(f"[red]ERROR[/red] Running profiler: {e}")
         raise
 
 
@@ -111,9 +104,7 @@ def eval(ctx):
         harness = EvalHarness()
         results = harness.run_all()
 
-        console.print(f"[green]✓[/green] Completed {len(results)} evaluations")
-
-        # Show results
+        console.print(f"[green]OK[/green] Completed {len(results)} evaluations")
         table = Table(title="Evaluation Results")
         table.add_column("Type", style="cyan")
         table.add_column("Score", justify="right", style="magenta")
@@ -134,7 +125,7 @@ def eval(ctx):
         console.print(table)
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error running evaluations: {e}")
+        console.print(f"[red]ERROR[/red] Running evaluations: {e}")
         raise
 
 
@@ -149,9 +140,7 @@ def recommend(ctx):
         recommendation = architect.run()
 
         if recommendation:
-            console.print(f"[green]✓[/green] Generated recommendation: {recommendation.recommendation_id}")
-
-            # Display recommendation details
+            console.print(f"[green]OK[/green] Generated recommendation: {recommendation.recommendation_id}")
             console.print("\n[bold]Recommendation Details:[/bold]")
             console.print(f"  [cyan]Type:[/cyan] {recommendation.recommendation_type.value}")
             console.print(f"  [cyan]Priority:[/cyan] {recommendation.priority}")
@@ -167,10 +156,10 @@ def recommend(ctx):
                 console.print(f"\n[bold]Migration SQL:[/bold]\n{recommendation.migration_sql}")
 
         else:
-            console.print("[yellow]![/yellow] No recommendation generated")
+            console.print("[yellow]WARN[/yellow] No recommendation generated")
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error running Architect: {e}")
+        console.print(f"[red]ERROR[/red] Running Architect: {e}")
         raise
 
 
@@ -224,7 +213,7 @@ def list_recommendations(ctx, limit):
         console.print(table)
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error listing recommendations: {e}")
+        console.print(f"[red]ERROR[/red] Listing recommendations: {e}")
         raise
 
 
@@ -235,25 +224,22 @@ def run_all(ctx):
     try:
         console.print("[bold cyan]Running complete Qwen-DBA workflow[/bold cyan]\n")
 
-        # Step 1: Profile
         console.print("[cyan]Step 1/3: Profiling workload...[/cyan]")
         ctx.invoke(profile, save=True)
         console.print()
 
-        # Step 2: Evaluate
         console.print("[cyan]Step 2/3: Running evaluations...[/cyan]")
         ctx.invoke(eval)
         console.print()
 
-        # Step 3: Recommend
         console.print("[cyan]Step 3/3: Generating recommendations...[/cyan]")
         ctx.invoke(recommend)
         console.print()
 
-        console.print("[bold green]✓ Workflow completed successfully[/bold green]")
+        console.print("[bold green]OK - Workflow completed[/bold green]")
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Workflow failed: {e}")
+        console.print(f"[red]ERROR[/red] Workflow failed: {e}")
         raise
 
 
@@ -287,7 +273,7 @@ def status(ctx):
         console.print(f"  [cyan]Pending Recommendations:[/cyan] {pending_count:,}")
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error getting status: {e}")
+        console.print(f"[red]ERROR[/red] Getting status: {e}")
         raise
 
 

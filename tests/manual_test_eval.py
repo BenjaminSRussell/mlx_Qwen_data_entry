@@ -68,7 +68,7 @@ def test_rag_evaluator():
         assert "test_count" in metrics, "Should have test count"
         assert metrics["test_count"] == 3, f"Expected 3 test cases, got {metrics['test_count']}"
 
-        print("✓ RAGAccuracyEvaluator tests passed\n")
+        print("PASS: RAGAccuracyEvaluator tests\n")
 
     finally:
         import os
@@ -114,19 +114,19 @@ def test_mrr_edge_cases():
     print(f"  No relevant docs MRR: {mrr:.4f}")
     assert mrr == 0.0, f"No relevant docs should have MRR=0.0, got {mrr}"
 
-    print("✓ MRR edge cases tests passed\n")
+    print("PASS: MRR edge cases tests\n")
 
 
 if __name__ == "__main__":
     try:
         test_rag_evaluator()
         test_mrr_edge_cases()
-        print("\n🎉 All eval harness tests passed!")
+        print("\nAll eval harness tests passed")
     except AssertionError as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\nTest failed: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

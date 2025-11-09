@@ -20,77 +20,45 @@ class QueryFingerprinter:
         self.case_insensitive = case_insensitive
 
     def fingerprint(self, query: str) -> str:
-        """
-        Generate a fingerprint for a query.
-
-        The fingerprint is a normalized version of the query that groups
-        similar queries together (e.g., same structure, different literals).
+        """Generate normalized query fingerprint.
 
         Args:
-            query: The SQL query to fingerprint
+            query: SQL query to fingerprint
 
         Returns:
             Normalized query fingerprint
         """
         normalized = query
 
-        # Case normalization
         if self.case_insensitive:
             normalized = normalized.upper()
 
-        # Normalize literals
         if self.normalize_literals:
-            # Replace string literals
             normalized = re.sub(r"'[^']*'", "?", normalized)
             normalized = re.sub(r'"[^"]*"', "?", normalized)
-
-            # Replace numeric literals (but not in identifiers)
             normalized = re.sub(r'\b\d+\b', '?', normalized)
             normalized = re.sub(r'\b\d+\.\d+\b', '?', normalized)
-
-            # Replace arrays and lists
             normalized = re.sub(r'\([^)]*\)', '(?)', normalized)
 
-        # Normalize whitespace
         if self.normalize_whitespace:
-            # Replace multiple spaces with single space
             normalized = re.sub(r'\s+', ' ', normalized)
-            # Remove leading/trailing whitespace
             normalized = normalized.strip()
 
         return normalized
 
     def get_query_hash(self, query: str) -> str:
-        """
-        Get a hash of the query fingerprint.
-
-        Args:
-            query: The SQL query
-
-        Returns:
-            SHA-256 hash of the fingerprint
-        """
+        """Get SHA-256 hash of query fingerprint."""
         fingerprint = self.fingerprint(query)
         return hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
 
     def extract_query_type(self, query: str) -> Optional[str]:
-        """
-        Extract the query type (SELECT, INSERT, UPDATE, etc.).
-
-        Args:
-            query: The SQL query
-
-        Returns:
-            Query type or None
-        """
+        """Extract query type (SELECT, INSERT, UPDATE, etc.)."""
         query_upper = query.strip().upper()
 
-        # Common query types
         query_types = [
             "SELECT", "INSERT", "UPDATE", "DELETE",
             "CREATE", "ALTER", "DROP", "TRUNCATE",
-            "BEGIN", "COMMIT", "ROLLBACK",
-            "WITH"  # CTE
+            "BEGIN", "COMMIT", "ROLLBACK", "WITH"
         ]
 
         for qtype in query_types:
@@ -100,19 +68,8 @@ class QueryFingerprinter:
         return "OTHER"
 
     def extract_tables(self, query: str) -> list[str]:
-        """
-        Extract table names from a query (simple heuristic).
-
-        Args:
-            query: The SQL query
-
-        Returns:
-            List of table names found
-        """
-        # This is a simple heuristic - for production, consider using sqlparse
+        """Extract table names from query using simple heuristics."""
         tables = []
-
-        # Look for FROM clauses
         from_matches = re.finditer(
             r'\bFROM\s+(\w+(?:\.\w+)?)',
             query,
@@ -121,31 +78,16 @@ class QueryFingerprinter:
         for match in from_matches:
             tables.append(match.group(1))
 
-        # Look for JOIN clauses
-        join_matches = re.finditer(
-            r'\bJOIN\s+(\w+(?:\.\w+)?)',
-            query,
-            re.IGNORECASE
-        )
+        join_matches = re.finditer(r'\bJOIN\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
         for match in join_matches:
             tables.append(match.group(1))
 
-        # Look for UPDATE/DELETE
-        update_matches = re.finditer(
-            r'\b(?:UPDATE|DELETE FROM)\s+(\w+(?:\.\w+)?)',
-            query,
-            re.IGNORECASE
-        )
+        update_matches = re.finditer(r'\b(?:UPDATE|DELETE FROM)\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
         for match in update_matches:
             tables.append(match.group(1))
 
-        # Look for INSERT INTO
-        insert_matches = re.finditer(
-            r'\bINSERT INTO\s+(\w+(?:\.\w+)?)',
-            query,
-            re.IGNORECASE
-        )
+        insert_matches = re.finditer(r'\bINSERT INTO\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
         for match in insert_matches:
             tables.append(match.group(1))
 
-        return list(set(tables))  # Remove duplicates
+        return list(set(tables))
