@@ -20,17 +20,18 @@ class BaseEvaluator:
 class RAGAccuracyEvaluator(BaseEvaluator):
     """Evaluates RAG (Retrieval-Augmented Generation) accuracy."""
 
-    def __init__(self, dataset_path: str, metric: str = "mrr"):
+    def __init__(self, dataset_path: str, metric: str = "mrr", use_db: bool = False):
         """
         Initialize RAG evaluator.
 
         Args:
             dataset_path: Path to golden evaluation dataset
             metric: Metric to use (mrr, precision_at_k, recall_at_k)
+            use_db: Whether to initialize database connection (default: False)
         """
         self.dataset_path = dataset_path
         self.metric = metric
-        self.db = get_primary_db()
+        self.db = get_primary_db() if use_db else None
 
     def load_dataset(self) -> List[Dict[str, Any]]:
         """Load evaluation dataset."""
@@ -149,7 +150,8 @@ class SLOEvaluator(BaseEvaluator):
         self,
         p95_threshold_ms: float = 500,
         p99_threshold_ms: float = 1000,
-        error_rate_threshold: float = 0.001
+        error_rate_threshold: float = 0.001,
+        use_db: bool = True
     ):
         """
         Initialize SLO evaluator.
@@ -158,11 +160,12 @@ class SLOEvaluator(BaseEvaluator):
             p95_threshold_ms: P95 latency threshold
             p99_threshold_ms: P99 latency threshold
             error_rate_threshold: Error rate threshold
+            use_db: Whether to initialize database connection (default: True)
         """
         self.p95_threshold_ms = p95_threshold_ms
         self.p99_threshold_ms = p99_threshold_ms
         self.error_rate_threshold = error_rate_threshold
-        self.db = get_metrics_db()
+        self.db = get_metrics_db() if use_db else None
 
     def get_recent_workload_metrics(self) -> Dict[str, Any]:
         """Get recent workload metrics from database."""
@@ -250,15 +253,16 @@ class SLOEvaluator(BaseEvaluator):
 class BusinessMetricsEvaluator(BaseEvaluator):
     """Evaluates business-specific metrics."""
 
-    def __init__(self, metric_name: str = "search_relevance"):
+    def __init__(self, metric_name: str = "search_relevance", use_db: bool = False):
         """
         Initialize business metrics evaluator.
 
         Args:
             metric_name: Name of the business metric to track
+            use_db: Whether to initialize database connection (default: False)
         """
         self.metric_name = metric_name
-        self.db = get_primary_db()
+        self.db = get_primary_db() if use_db else None
 
     def evaluate(self) -> Dict[str, Any]:
         """
