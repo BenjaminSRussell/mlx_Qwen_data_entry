@@ -1,0 +1,131 @@
+# Qwen-DBA Phase 1 Configuration
+
+# Database connections
+databases:
+  primary:
+    type: "postgresql"
+    host: "localhost"
+    port: 5432
+    database: "production_db"
+    username: "postgres"
+    password_env: "DB_PASSWORD"  # Read from environment variable
+
+  metrics:
+    type: "postgresql"
+    host: "localhost"
+    port: 5432
+    database: "qwen_dba_metrics"
+    username: "postgres"
+    password_env: "METRICS_DB_PASSWORD"
+
+# Vector database (optional)
+vector_db:
+  enabled: false
+  type: "chroma"  # Options: chroma, qdrant, weaviate
+  host: "localhost"
+  port: 8000
+  collection: "embeddings"
+
+# Workload Profiler settings
+profiler:
+  enabled: true
+
+  # Log sources
+  sources:
+    postgres_logs:
+      enabled: true
+      log_path: "/var/log/postgresql/postgresql.log"
+      log_format: "standard"  # Options: standard, json, csv
+
+    vector_logs:
+      enabled: false
+      log_path: "/var/log/vector_db/queries.log"
+
+    application_logs:
+      enabled: false
+      log_path: "/var/log/app/queries.log"
+
+  # Aggregation settings
+  aggregation:
+    window_minutes: 60  # Aggregate queries over 1-hour windows
+    min_query_count: 5  # Minimum occurrences to track a query pattern
+
+  # Fingerprinting (normalize queries for pattern detection)
+  fingerprint:
+    normalize_literals: true  # Replace literals with placeholders
+    normalize_whitespace: true
+    case_insensitive: true
+
+# Evaluation Harness settings
+eval_harness:
+  enabled: true
+
+  # Evaluation datasets
+  datasets:
+    rag_accuracy:
+      path: "eval_data/rag_golden_set.json"
+      metric: "mrr"  # Mean Reciprocal Rank
+
+    business_metrics:
+      enabled: true
+      metric: "search_relevance"
+
+  # SLO thresholds
+  slos:
+    p95_latency_ms: 500
+    p99_latency_ms: 1000
+    error_rate_percent: 0.1
+
+  # Run schedule
+  schedule:
+    cron: "0 */6 * * *"  # Every 6 hours
+
+# Qwen-MLX Architect settings
+architect:
+  enabled: true
+
+  # Model configuration
+  model:
+    name: "Qwen/Qwen2.5-7B-Instruct"  # Or Qwen2.5-14B-Instruct for larger model
+    quantization: "4bit"  # Options: 4bit, 8bit, none
+    max_tokens: 4096
+    temperature: 0.7
+
+  # Prompt configuration
+  prompt:
+    include_schema: true
+    include_workload_stats: true
+    include_current_config: true
+    max_workload_entries: 50  # Top N queries by impact
+
+  # Analysis settings
+  analysis:
+    min_confidence: 0.7  # Minimum confidence to generate recommendation
+    focus_areas:
+      - "indexes"
+      - "query_optimization"
+      - "schema_tuning"
+      - "vector_search_params"
+
+  # Output configuration
+  output:
+    format: "json"
+    destination: "database"  # Options: database, file, slack
+    slack_webhook_env: "SLACK_WEBHOOK_URL"
+
+  # Schedule
+  schedule:
+    cron: "0 2 * * *"  # Daily at 2 AM
+
+# Logging
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  format: "json"
+  output: "stdout"  # Options: stdout, file
+  file_path: "logs/qwen-dba.log"
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"

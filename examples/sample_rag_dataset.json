@@ -1,0 +1,17 @@
+[
+  {
+    "query": "What is the capital of France?",
+    "retrieved": ["doc_123", "doc_456", "doc_789"],
+    "relevant": ["doc_123"]
+  },
+  {
+    "query": "How do I reset my password?",
+    "retrieved": ["doc_234", "doc_345", "doc_456"],
+    "relevant": ["doc_234", "doc_345"]
+  },
+  {
+    "query": "What are the shipping options?",
+    "retrieved": ["doc_567", "doc_678", "doc_789"],
+    "relevant": ["doc_567"]
+  }
+]
