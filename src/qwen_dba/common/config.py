@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 
+from .exceptions import ConfigError
 # Load environment variables
 load_dotenv()
 
@@ -24,7 +25,9 @@ class DatabaseConfig(BaseModel):
 
     def get_connection_string(self) -> str:
         """Get SQLAlchemy connection string."""
-        password = os.getenv(self.password_env, "")
+        password = os.getenv(self.password_env)
+        if not password:
+            raise ConfigError(f"Environment variable {self.password_env} not set for database password.")
         return f"{self.type}://{self.username}:{password}@{self.host}:{self.port}/{self.database}"
 
 
@@ -96,18 +99,6 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
 
-    @classmethod
-    def load_from_file(cls, config_path: str = "config.yaml") -> "Config":
-        """Load configuration from YAML file."""
-        path = Path(config_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        with open(path, "r") as f:
-            config_dict = yaml.safe_load(f)
-
-        return cls(**config_dict)
-
     def get_primary_db_connection_string(self) -> str:
         """Get primary database connection string."""
         return self.databases["primary"].get_connection_string()
@@ -117,20 +108,46 @@ class Config(BaseModel):
         return self.databases["metrics"].get_connection_string()
 
 
-# Global configuration instance
-_config: Optional[Config] = None
+class ConfigManager:
+    """Configuration manager for Qwen-DBA."""
+    _config: Optional[Config] = None
+    _config_path: Optional[str] = None
 
+    @classmethod
+    def get_config(cls, config_path: str = "config.yaml") -> Config:
+        """Get global configuration instance."""
+        if cls._config is None or cls._config_path != config_path:
+            cls.load_config(config_path)
+        return cls._config
+
+    @classmethod
+    def load_config(cls, config_path: str):
+        """Load configuration from YAML file."""
+        path = Path(config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        with open(path, "r") as f:
+            config_dict = yaml.safe_load(f)
+
+        cls._config = Config(**config_dict)
+        cls._config_path = config_path
+
+    @classmethod
+    def reload_config(cls):
+        """Reload configuration from file."""
+        if cls._config_path is None:
+            raise ConfigError("Configuration has not been loaded yet.")
+        cls.load_config(cls._config_path)
+
+
+# Singleton instance
+_config_manager = ConfigManager()
 
 def get_config(config_path: str = "config.yaml") -> Config:
     """Get global configuration instance."""
-    global _config
-    if _config is None:
-        _config = Config.load_from_file(config_path)
-    return _config
+    return _config_manager.get_config(config_path)
 
-
-def reload_config(config_path: str = "config.yaml") -> Config:
+def reload_config():
     """Reload configuration from file."""
-    global _config
-    _config = Config.load_from_file(config_path)
-    return _config
+    _config_manager.reload_config()

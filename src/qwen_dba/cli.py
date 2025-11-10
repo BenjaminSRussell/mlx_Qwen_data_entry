@@ -5,8 +5,9 @@ from rich.console import Console
 from rich.table import Table
 from pathlib import Path
 
-from .common.config import get_config, reload_config
+from .common.config import get_config, ConfigError
 from .common.database import get_metrics_db
+from .common.exceptions import QwenDbaError
 from .profiler.profiler import WorkloadProfiler
 from .eval_harness.harness import EvalHarness
 from .architect.architect import QwenArchitect
@@ -25,23 +26,35 @@ def cli(ctx, config):
     try:
         get_config(config)
         console.print(f"[green]OK[/green] Configuration loaded from {config}")
+    except ConfigError as e:
+        console.print(f"[red]ERROR[/red] Configuration error: {e}")
+        ctx.exit(1)
     except Exception as e:
         console.print(f"[red]ERROR[/red] Loading configuration: {e}")
         ctx.exit(1)
 
 
 @cli.command()
+@click.option('--recreate', is_flag=True, default=False, help='Recreate schema if it already exists')
 @click.pass_context
-def init_db(ctx):
+def init_db(ctx, recreate):
     """Initialize database schema."""
     config_path = ctx.obj['config_path']
+    schema_name = 'qwen_dba'
 
     try:
         console.print("[cyan]Initializing database schema...[/cyan]")
-
         db = get_metrics_db()
-        schema_file = Path(__file__).parent.parent.parent / 'sql' / '001_create_schema.sql'
 
+        if db.schema_exists(schema_name):
+            if recreate:
+                console.print(f"[yellow]WARN[/yellow] Schema '{schema_name}' already exists. Recreating.")
+                db.execute_raw(f"DROP SCHEMA {schema_name} CASCADE")
+            else:
+                console.print(f"[yellow]WARN[/yellow] Schema '{schema_name}' already exists. Use --recreate to drop and recreate it.")
+                return
+
+        schema_file = Path(__file__).parent.parent.parent / 'sql' / '001_create_schema.sql'
         if not schema_file.exists():
             console.print(f"[red]ERROR[/red] Schema file not found: {schema_file}")
             return
@@ -49,8 +62,8 @@ def init_db(ctx):
         db.execute_script(str(schema_file))
         console.print("[green]OK[/green] Database schema initialized")
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Initializing database: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 
@@ -89,8 +102,8 @@ def profile(ctx, save):
         else:
             console.print("[yellow]WARN[/yellow] No snapshots created")
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Running profiler: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 
@@ -124,14 +137,15 @@ def eval(ctx):
 
         console.print(table)
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Running evaluations: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 
 @cli.command()
+@click.option('--dry-run', is_flag=True, default=False, help='Show recommendation without saving to database')
 @click.pass_context
-def recommend(ctx):
+def recommend(ctx, dry_run):
     """Run Qwen-MLX Architect to generate optimization recommendations."""
     try:
         console.print("[cyan]Starting Qwen-MLX Architect...[/cyan]")
@@ -155,11 +169,16 @@ def recommend(ctx):
             if recommendation.migration_sql:
                 console.print(f"\n[bold]Migration SQL:[/bold]\n{recommendation.migration_sql}")
 
+            if dry_run:
+                console.print("\n[yellow]--dry-run enabled, not saving recommendation.[/yellow]")
+            else:
+                architect.save_recommendation(recommendation)
+                console.print("\n[green]OK[/green] Recommendation saved to database.")
         else:
             console.print("[yellow]WARN[/yellow] No recommendation generated")
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Running Architect: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 
@@ -212,8 +231,8 @@ def list_recommendations(ctx, limit):
 
         console.print(table)
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Listing recommendations: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 
@@ -238,7 +257,7 @@ def run_all(ctx):
 
         console.print("[bold green]OK - Workflow completed[/bold green]")
 
-    except Exception as e:
+    except QwenDbaError as e:
         console.print(f"[red]ERROR[/red] Workflow failed: {e}")
         raise
 
@@ -272,8 +291,8 @@ def status(ctx):
         pending_count = result[0][0] if result else 0
         console.print(f"  [cyan]Pending Recommendations:[/cyan] {pending_count:,}")
 
-    except Exception as e:
-        console.print(f"[red]ERROR[/red] Getting status: {e}")
+    except QwenDbaError as e:
+        console.print(f"[red]ERROR[/red] {e}")
         raise
 
 

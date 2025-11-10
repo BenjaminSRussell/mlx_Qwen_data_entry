@@ -370,9 +370,6 @@ class QwenArchitect:
         recommendation = self.generate_recommendation()
 
         if recommendation:
-            # Save to database
-            self.save_recommendation(recommendation)
-
             # Output to configured destination
             self._output_recommendation(recommendation)
 

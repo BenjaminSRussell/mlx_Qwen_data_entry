@@ -58,6 +58,12 @@ class Database:
             for statement in statements:
                 session.execute(text(statement))
 
+    def schema_exists(self, schema_name: str) -> bool:
+        """Check if a schema exists."""
+        sql = "SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema_name"
+        result = self.execute_raw(sql, {'schema_name': schema_name})
+        return bool(result)
+
 
 # Global database instances
 _primary_db = None
