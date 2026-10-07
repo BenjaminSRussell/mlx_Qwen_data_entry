@@ -9,7 +9,7 @@ from .common.config import get_config, reload_config
 from .common.database import get_metrics_db
 from .profiler.profiler import WorkloadProfiler
 from .eval_harness.harness import EvalHarness
-from .architect.architect import QwenArchitect
+from .architect.factory import create_architect
 
 console = Console()
 
@@ -136,7 +136,7 @@ def recommend(ctx):
     try:
         console.print("[cyan]Starting Qwen-MLX Architect...[/cyan]")
 
-        architect = QwenArchitect()
+        architect = create_architect()
         recommendation = architect.run()
 
         if recommendation:

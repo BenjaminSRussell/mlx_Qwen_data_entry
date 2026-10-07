@@ -109,3 +109,13 @@ Phase 2 will add automated shadow testing and workload replay. Phase 3 will impl
 ## License
 
 MIT License
+
+
+## Architect backends
+
+| Environment | Backend | How |
+|-------------|---------|-----|
+| Linux CI / Docker | `StubArchitect` | `QWEN_ARCHITECT=stub` (default when MLX import fails) |
+| Apple Silicon | `QwenArchitect` (MLX) | `QWEN_ARCHITECT=mlx` or auto when `mlx` importable |
+
+CI runs the propose path with Stub only — no Apple Silicon required.
