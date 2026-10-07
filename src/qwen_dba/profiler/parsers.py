@@ -20,15 +20,18 @@ class LogParser:
 class PostgresLogParser(LogParser):
     """Parser for PostgreSQL log files."""
 
-    # Pattern for standard PostgreSQL log format
-    # Example: 2025-01-09 12:34:56.789 UTC [12345] LOG:  duration: 123.456 ms  statement: SELECT * FROM users WHERE id = 1
-    LOG_PATTERN = re.compile(
-        r'(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) '
-        r'\[(?P<pid>\d+)\] '
+    # Timestamp + pid + level prefix. Statement may be multi-line until next prefix.
+    # Timezone kept (UTC, EST, +00, etc.).
+    LINE_PREFIX = re.compile(
+        r'^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+(?P<tz>\S+)\s+'
+        r'\[(?P<pid>\d+)\]\s+'
         r'(?P<level>\w+):\s+'
-        r'duration: (?P<duration>[\d.]+) ms\s+'
-        r'statement: (?P<statement>.*?)$',
-        re.MULTILINE
+        r'(?P<body>.*)$'
+    )
+    DURATION_STATEMENT = re.compile(
+        r'duration:\s*(?P<duration>[\d.]+)\s*ms\s+'
+        r'(?:statement|(?:execute\s+(?P<exec_name>\S+))):\s*(?P<statement>.*)$',
+        re.IGNORECASE | re.DOTALL,
     )
 
     def __init__(self, source: str = QuerySource.POSTGRES):
@@ -36,32 +39,50 @@ class PostgresLogParser(LogParser):
         self.source = source
 
     def parse_file(self, file_path: str) -> Iterator[QueryLog]:
-        """Parse PostgreSQL log file."""
+        """Parse PostgreSQL log file, including multi-line statements."""
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"Log file not found: {file_path}")
 
         with open(path, 'r') as f:
-            content = f.read()
+            lines = f.readlines()
 
-        for match in self.LOG_PATTERN.finditer(content):
+        i = 0
+        while i < len(lines):
+            line = lines[i].rstrip('\n')
+            m = self.LINE_PREFIX.match(line)
+            if not m:
+                i += 1
+                continue
+
+            body = m.group('body')
+            # Accumulate continuation lines that do not start a new prefix
+            i += 1
+            while i < len(lines) and not self.LINE_PREFIX.match(lines[i]):
+                body += '\n' + lines[i].rstrip('\n')
+                i += 1
+
+            dm = self.DURATION_STATEMENT.search(body)
+            if not dm:
+                continue
+
             try:
-                # Parse timestamp
-                timestamp_str = match.group('timestamp')
                 timestamp = datetime.strptime(
-                    timestamp_str.rsplit(' ', 1)[0],  # Remove timezone
+                    m.group('timestamp'),
                     '%Y-%m-%d %H:%M:%S.%f'
                 )
-
-                # Parse duration
-                duration_ms = float(match.group('duration'))
-
-                # Get query
-                query = match.group('statement').strip()
-
-                # Skip empty queries
+                # Preserve timezone label on the model via notes if available;
+                # QueryLog may not have tz field — attach in query metadata by prefix.
+                tz = m.group('tz')
+                duration_ms = float(dm.group('duration'))
+                query = (dm.group('statement') or '').strip()
                 if not query:
                     continue
+
+                # Keep timezone discoverable without breaking QueryLog schema
+                # by stashing it in a trailing SQL comment when non-UTC.
+                if tz and tz.upper() != 'UTC':
+                    query = f"{query} /* pg_log_tz={tz} */"
 
                 yield QueryLog(
                     timestamp=timestamp,
@@ -70,9 +91,7 @@ class PostgresLogParser(LogParser):
                     success=True,
                     source=self.source
                 )
-
             except Exception as e:
-                # Log parsing error and continue
                 print(f"Error parsing log entry: {e}")
                 continue
 
