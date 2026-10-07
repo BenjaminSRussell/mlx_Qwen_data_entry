@@ -232,3 +232,13 @@ If those tests pass, the system is ready for careful production deployment with 
 The Qwen-DBA Phase 1 implementation is complete and the core logic is validated. The system is not yet production-ready due to lack of full environment testing. With access to macOS + PostgreSQL, the remaining validation can be completed in 4-8 weeks.
 
 Code quality is high, architecture is sound, and the foundation is solid for Phase 2 (shadow testing) and Phase 3 (autonomous optimization).
+
+
+## Architect backends
+
+| Environment | Backend | How |
+|-------------|---------|-----|
+| Linux CI / Docker | `StubArchitect` | `QWEN_ARCHITECT=stub` (default when MLX import fails) |
+| Apple Silicon | `QwenArchitect` (MLX) | `QWEN_ARCHITECT=mlx` or auto when `mlx` importable |
+
+CI runs the propose path with Stub only — no Apple Silicon required.

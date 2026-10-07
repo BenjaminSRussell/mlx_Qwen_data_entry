@@ -1,0 +1,23 @@
+name: CI Stub (Linux)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  stub-loop:
+    runs-on: ubuntu-latest
+    env:
+      QWEN_ARCHITECT: stub
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r requirements-test.txt
+      - name: Stub architect unit tests
+        run: pytest tests/test_stub_architect.py -q
