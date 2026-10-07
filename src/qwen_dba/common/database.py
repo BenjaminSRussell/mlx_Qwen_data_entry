@@ -64,6 +64,16 @@ _primary_db = None
 _metrics_db = None
 
 
+def reset_connections() -> None:
+    """Drop cached engines (after the config changes)."""
+    global _primary_db, _metrics_db
+    for db in (_primary_db, _metrics_db):
+        if db is not None:
+            db.engine.dispose()
+    _primary_db = None
+    _metrics_db = None
+
+
 def get_primary_db() -> Database:
     """Get primary database connection."""
     global _primary_db

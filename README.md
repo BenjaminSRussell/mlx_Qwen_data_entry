@@ -119,3 +119,18 @@ MIT License
 | Apple Silicon | `QwenArchitect` (MLX) | `QWEN_ARCHITECT=mlx` or auto when `mlx` importable |
 
 CI runs the propose path with Stub only — no Apple Silicon required.
+
+
+## Tests
+
+```bash
+pip install -r requirements-test.txt
+PYTHONPATH=src pytest -q          # unit tests; Postgres tests skip without a DB
+
+# Postgres integration (init-db, profile/eval/recommend writes)
+docker compose up -d postgres
+export QWEN_DBA_TEST_DATABASE_URL=postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test
+PYTHONPATH=src pytest -q -m postgres
+```
+
+`QWEN_DBA_DATABASE_URL` overrides the connection strings in `config.yaml`. `QWEN_DBA_CONFIG` (or `--config`) selects the config file.

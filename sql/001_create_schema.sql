@@ -53,9 +53,9 @@ CREATE TABLE IF NOT EXISTS qwen_dba.workload_snapshots (
 );
 
 -- Indexes for efficient querying
-CREATE INDEX idx_workload_snapshots_timestamp ON qwen_dba.workload_snapshots(snapshot_timestamp DESC);
-CREATE INDEX idx_workload_snapshots_impact ON qwen_dba.workload_snapshots(impact_score DESC);
-CREATE INDEX idx_workload_snapshots_fingerprint ON qwen_dba.workload_snapshots(query_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_workload_snapshots_timestamp ON qwen_dba.workload_snapshots(snapshot_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_workload_snapshots_impact ON qwen_dba.workload_snapshots(impact_score DESC);
+CREATE INDEX IF NOT EXISTS idx_workload_snapshots_fingerprint ON qwen_dba.workload_snapshots(query_fingerprint);
 
 -- ============================================================================
 -- Evaluation Results
@@ -100,9 +100,9 @@ CREATE TABLE IF NOT EXISTS qwen_dba.eval_results (
 );
 
 -- Indexes for evaluation results
-CREATE INDEX idx_eval_results_timestamp ON qwen_dba.eval_results(eval_timestamp DESC);
-CREATE INDEX idx_eval_results_type ON qwen_dba.eval_results(eval_type);
-CREATE INDEX idx_eval_results_environment ON qwen_dba.eval_results(environment);
+CREATE INDEX IF NOT EXISTS idx_eval_results_timestamp ON qwen_dba.eval_results(eval_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_eval_results_type ON qwen_dba.eval_results(eval_type);
+CREATE INDEX IF NOT EXISTS idx_eval_results_environment ON qwen_dba.eval_results(environment);
 
 -- ============================================================================
 -- Recommendations
@@ -164,10 +164,10 @@ CREATE TABLE IF NOT EXISTS qwen_dba.recommendations (
 );
 
 -- Indexes for recommendations
-CREATE INDEX idx_recommendations_timestamp ON qwen_dba.recommendations(recommendation_timestamp DESC);
-CREATE INDEX idx_recommendations_status ON qwen_dba.recommendations(status);
-CREATE INDEX idx_recommendations_priority ON qwen_dba.recommendations(priority);
-CREATE INDEX idx_recommendations_type ON qwen_dba.recommendations(recommendation_type);
+CREATE INDEX IF NOT EXISTS idx_recommendations_timestamp ON qwen_dba.recommendations(recommendation_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendations_status ON qwen_dba.recommendations(status);
+CREATE INDEX IF NOT EXISTS idx_recommendations_priority ON qwen_dba.recommendations(priority);
+CREATE INDEX IF NOT EXISTS idx_recommendations_type ON qwen_dba.recommendations(recommendation_type);
 
 -- ============================================================================
 -- System Configuration History
@@ -194,8 +194,8 @@ CREATE TABLE IF NOT EXISTS qwen_dba.config_history (
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_config_history_timestamp ON qwen_dba.config_history(change_timestamp DESC);
-CREATE INDEX idx_config_history_key ON qwen_dba.config_history(config_key);
+CREATE INDEX IF NOT EXISTS idx_config_history_timestamp ON qwen_dba.config_history(change_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_config_history_key ON qwen_dba.config_history(config_key);
 
 -- ============================================================================
 -- Views for Analysis

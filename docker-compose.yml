@@ -1,0 +1,18 @@
+# Local Postgres for the integration tests (#2):
+#   docker compose up -d postgres
+#   export QWEN_DBA_TEST_DATABASE_URL=postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test
+#   PYTHONPATH=src pytest -m postgres
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qwen
+      POSTGRES_PASSWORD: qwen
+      POSTGRES_DB: qwen_dba_test
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qwen -d qwen_dba_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
