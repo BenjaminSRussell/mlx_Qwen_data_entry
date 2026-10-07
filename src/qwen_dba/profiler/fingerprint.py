@@ -34,11 +34,19 @@ class QueryFingerprinter:
             normalized = normalized.upper()
 
         if self.normalize_literals:
-            normalized = re.sub(r"'[^']*'", "?", normalized)
-            normalized = re.sub(r'"[^"]*"', "?", normalized)
-            normalized = re.sub(r'\b\d+\b', '?', normalized)
+            # String literals (single quotes); keep double-quoted identifiers
+            normalized = re.sub(r"'([^']|'')*'", "?", normalized)
+            # Numeric literals: replace full number tokens including decimals first
             normalized = re.sub(r'\b\d+\.\d+\b', '?', normalized)
-            normalized = re.sub(r'\([^)]*\)', '(?)', normalized)
+            normalized = re.sub(r'\b\d+\b', '?', normalized)
+            # Collapse IN-lists / value tuples but NOT SELECT column lists:
+            # only replace parenthetical groups that look like value lists (all ?/,/space)
+            def _collapse_value_lists(match: re.Match) -> str:
+                inner = match.group(1)
+                if re.fullmatch(r'[\s?,]*', inner):
+                    return '(?)'
+                return match.group(0)
+            normalized = re.sub(r'\(([^()]*)\)', _collapse_value_lists, normalized)
 
         if self.normalize_whitespace:
             normalized = re.sub(r'\s+', ' ', normalized)
@@ -69,25 +77,27 @@ class QueryFingerprinter:
 
     def extract_tables(self, query: str) -> list[str]:
         """Extract table names from query using simple heuristics."""
-        tables = []
-        from_matches = re.finditer(
-            r'\bFROM\s+(\w+(?:\.\w+)?)',
+        # Strip EXTRACT(...) / CAST(...) style function calls so their
+        # keywords are not mistaken for tables.
+        scrubbed = re.sub(
+            r'\bEXTRACT\s*\([^)]*\)',
+            ' ',
             query,
-            re.IGNORECASE
+            flags=re.IGNORECASE,
         )
-        for match in from_matches:
-            tables.append(match.group(1))
-
-        join_matches = re.finditer(r'\bJOIN\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
-        for match in join_matches:
-            tables.append(match.group(1))
-
-        update_matches = re.finditer(r'\b(?:UPDATE|DELETE FROM)\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
-        for match in update_matches:
-            tables.append(match.group(1))
-
-        insert_matches = re.finditer(r'\bINSERT INTO\s+(\w+(?:\.\w+)?)', query, re.IGNORECASE)
-        for match in insert_matches:
-            tables.append(match.group(1))
-
-        return list(set(tables))
+        tables = []
+        patterns = [
+            r'\bFROM\s+("?[\w]+"?\.?\w*)',
+            r'\bJOIN\s+("?[\w]+"?\.?\w*)',
+            r'\bUPDATE\s+("?[\w]+"?\.?\w*)',
+            r'\bDELETE\s+FROM\s+("?[\w]+"?\.?\w*)',
+            r'\bINSERT\s+INTO\s+("?[\w]+"?\.?\w*)',
+        ]
+        for pat in patterns:
+            for match in re.finditer(pat, scrubbed, re.IGNORECASE):
+                name = match.group(1).strip()
+                # Ignore obvious non-tables
+                if name.upper() in {'SELECT', 'WHERE', 'SET', 'VALUES', 'LATERAL'}:
+                    continue
+                tables.append(name.strip('"'))
+        return list(dict.fromkeys(tables))
