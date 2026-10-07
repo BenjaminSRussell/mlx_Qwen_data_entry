@@ -11,6 +11,7 @@ from ..common.logger import logger
 from ..common.models import WorkloadSnapshot, EvalResult, Recommendation, RecommendationType, RiskLevel, RecommendationStatus
 from .model import QwenModel
 from .prompt_builder import PromptBuilder
+from . import store
 
 
 class QwenArchitect:
@@ -41,66 +42,7 @@ class QwenArchitect:
 
     def get_recent_workload_snapshots(self, limit: int = 50) -> List[WorkloadSnapshot]:
         """Get recent workload snapshots from database."""
-        sql = """
-            SELECT
-                snapshot_timestamp,
-                window_start,
-                window_end,
-                query_fingerprint,
-                query_type,
-                query_source,
-                example_query,
-                execution_count,
-                total_execution_time_ms,
-                avg_execution_time_ms,
-                p50_latency_ms,
-                p95_latency_ms,
-                p99_latency_ms,
-                max_latency_ms,
-                min_latency_ms,
-                avg_rows_returned,
-                avg_rows_scanned,
-                avg_buffer_hits,
-                avg_buffer_misses,
-                error_count,
-                error_rate,
-                impact_score
-            FROM qwen_dba.workload_snapshots
-            ORDER BY impact_score DESC
-            LIMIT :limit
-        """
-
-        rows = self.db.execute_raw(sql, {'limit': limit})
-
-        snapshots = []
-        for row in rows:
-            snapshot = WorkloadSnapshot(
-                snapshot_timestamp=row[0],
-                window_start=row[1],
-                window_end=row[2],
-                query_fingerprint=row[3],
-                query_type=row[4],
-                query_source=row[5],
-                example_query=row[6],
-                execution_count=row[7],
-                total_execution_time_ms=float(row[8]),
-                avg_execution_time_ms=float(row[9]),
-                p50_latency_ms=float(row[10]) if row[10] else None,
-                p95_latency_ms=float(row[11]) if row[11] else None,
-                p99_latency_ms=float(row[12]) if row[12] else None,
-                max_latency_ms=float(row[13]) if row[13] else None,
-                min_latency_ms=float(row[14]) if row[14] else None,
-                avg_rows_returned=float(row[15]) if row[15] else None,
-                avg_rows_scanned=float(row[16]) if row[16] else None,
-                avg_buffer_hits=float(row[17]) if row[17] else None,
-                avg_buffer_misses=float(row[18]) if row[18] else None,
-                error_count=row[19],
-                error_rate=float(row[20]),
-                impact_score=float(row[21])
-            )
-            snapshots.append(snapshot)
-
-        return snapshots
+        return store.load_recent_workload_snapshots(self.db, limit)
 
     def get_recent_eval_results(self, limit: int = 5) -> List[EvalResult]:
         """Get recent evaluation results from database."""
@@ -285,77 +227,7 @@ class QwenArchitect:
 
     def save_recommendation(self, recommendation: Recommendation) -> bool:
         """Save recommendation to database."""
-        try:
-            sql = """
-                INSERT INTO qwen_dba.recommendations (
-                    recommendation_id,
-                    recommendation_timestamp,
-                    status,
-                    priority,
-                    recommendation_type,
-                    title,
-                    rationale,
-                    config_patch,
-                    expected_effects,
-                    expected_latency_improvement_percent,
-                    expected_cost_reduction_percent,
-                    risk_level,
-                    risk_notes,
-                    migration_sql,
-                    rollback_sql,
-                    model_name,
-                    model_version,
-                    confidence_score
-                ) VALUES (
-                    :recommendation_id,
-                    :recommendation_timestamp,
-                    :status,
-                    :priority,
-                    :recommendation_type,
-                    :title,
-                    :rationale,
-                    :config_patch,
-                    :expected_effects,
-                    :expected_latency_improvement_percent,
-                    :expected_cost_reduction_percent,
-                    :risk_level,
-                    :risk_notes,
-                    :migration_sql,
-                    :rollback_sql,
-                    :model_name,
-                    :model_version,
-                    :confidence_score
-                )
-            """
-
-            params = {
-                'recommendation_id': recommendation.recommendation_id,
-                'recommendation_timestamp': recommendation.recommendation_timestamp,
-                'status': recommendation.status.value,
-                'priority': recommendation.priority,
-                'recommendation_type': recommendation.recommendation_type.value,
-                'title': recommendation.title,
-                'rationale': recommendation.rationale,
-                'config_patch': json.dumps(recommendation.config_patch),
-                'expected_effects': json.dumps(recommendation.expected_effects),
-                'expected_latency_improvement_percent': recommendation.expected_latency_improvement_percent,
-                'expected_cost_reduction_percent': recommendation.expected_cost_reduction_percent,
-                'risk_level': recommendation.risk_level.value,
-                'risk_notes': recommendation.risk_notes,
-                'migration_sql': recommendation.migration_sql,
-                'rollback_sql': recommendation.rollback_sql,
-                'model_name': recommendation.model_name,
-                'model_version': recommendation.model_version,
-                'confidence_score': recommendation.confidence_score
-            }
-
-            self.db.execute_raw(sql, params)
-            logger.info(f"Saved recommendation: {recommendation.recommendation_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error saving recommendation: {e}")
-            return False
+        return store.save_recommendation(self.db, recommendation)
 
     def run(self) -> Optional[Recommendation]:
         """

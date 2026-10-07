@@ -31,14 +31,14 @@ Tested with sample datasets, all metric calculations validated.
 - Views for analysis and reporting
 - Migration and rollback support
 
-Schema SQL created but not deployed (requires PostgreSQL).
+**Tested in CI (#2):** `init-db` runs against Postgres 16 in the `postgres-integration` job. It is idempotent: the indexes now use `IF NOT EXISTS`.
 
 ### CLI
 - Commands implemented for all major functions
 - Rich terminal output with tables
 - Status monitoring and recommendation listing
 
-Not tested (requires full environment).
+**Tested in CI (#2):** the CLI is driven via Click's `CliRunner`: `init-db`, `profile`, `eval`, `recommend` (with the stub architect) and `status`.
 
 ## What Doesn't Work (Not Validated)
 
@@ -54,20 +54,28 @@ The code is implemented but cannot be validated without:
 - 8-10GB available RAM
 
 ### Database Integration
-**Status**: NOT TESTED
-**Reason**: PostgreSQL not available in test environment
+**Status**: TESTED (CI Postgres service, `tests/test_postgres_integration.py`, #2)
 
-All database write operations are untested:
-- Saving workload snapshots to database
-- Saving evaluation results to database
-- Saving recommendations to database
-- Schema initialization
+- [x] Schema initialization (`qwen-dba init-db`, re-runnable)
+- [x] Saving workload snapshots (profile of `examples/sample_postgres_log.txt`)
+- [x] Saving evaluation results
+- [x] Saving recommendations (stub architect reads stored snapshots and persists)
+
+Bugs fixed while wiring this up:
+- `--config` was ignored, because modules cached `config.yaml` at import time.
+- SQLAlchemy 2.1 picked the psycopg 3 driver, which isn't installed.
+- Passwords were not URL-escaped.
+- A second `init-db` failed on existing indexes.
+- The stub never persisted recommendations.
+- The stub proposed `EXPLAIN ANALYZE` on writes, which actually *executes* them.
+
+Run locally: `docker compose up -d postgres`, set `QWEN_DBA_TEST_DATABASE_URL=postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test`, then `PYTHONPATH=src pytest -m postgres`.
 
 ### End-to-End Workflow
 **Status**: NOT TESTED
-**Reason**: Requires both PostgreSQL and MLX
+**Reason**: Requires MLX for the real architect
 
-The complete workflow (profile -> eval -> recommend) cannot be validated without the full environment.
+profile -> eval -> recommend is validated end to end in CI with the stub architect against Postgres. Only the MLX model step is still unvalidated.
 
 ## Known Bugs Fixed
 
@@ -98,18 +106,18 @@ Detailed breakdown:
 - Workload aggregation: 100% (all tests pass)
 - RAG metrics: 100% (all tests pass)
 - SLO evaluator logic: 100% (all tests pass)
-- Profiler (full): 80% (core logic tested, DB writes untested)
-- Eval harness (full): 70% (core logic tested, DB writes untested)
+- Profiler (full): DB writes tested against Postgres
+- Eval harness (full): DB writes tested against Postgres
 - Qwen Architect: 0% (requires Apple Silicon)
-- CLI: 0% (requires full environment)
-- Database schema: 0% (requires PostgreSQL)
+- CLI: init-db/profile/eval/recommend/status tested (stub architect)
+- Database schema: tested (CI Postgres 16)
 
 ## Required for Production
 
 ### Must Have
 1. Full environment testing on macOS + PostgreSQL
 2. Qwen-MLX model loading and inference validated
-3. Database write operations tested
+3. ~~Database write operations tested~~ (done, #2)
 4. Human validation of 10+ AI recommendations
 5. Measurement of actual vs predicted improvements
 

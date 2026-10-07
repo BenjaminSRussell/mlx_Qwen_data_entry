@@ -15,7 +15,7 @@ console = Console()
 
 
 @click.group()
-@click.option('--config', default='config.yaml', help='Path to configuration file')
+@click.option('--config', default=None, envvar='QWEN_DBA_CONFIG', help='Path to configuration file (default: $QWEN_DBA_CONFIG or config.yaml)')
 @click.pass_context
 def cli(ctx, config):
     """Qwen-DBA: AI-Powered Database Administrator using Qwen-MLX"""
@@ -23,7 +23,12 @@ def cli(ctx, config):
     ctx.obj['config_path'] = config
 
     try:
-        get_config(config)
+        # reload (not get): modules imported above may already have cached the
+        # default config.yaml, which silently ignored --config.
+        reload_config(config)
+        from .common import database, logger as logger_module
+        database.reset_connections()
+        logger_module.setup_logger()
         console.print(f"[green]OK[/green] Configuration loaded from {config}")
     except Exception as e:
         console.print(f"[red]ERROR[/red] Loading configuration: {e}")

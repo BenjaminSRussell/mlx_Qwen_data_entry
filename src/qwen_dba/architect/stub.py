@@ -31,8 +31,20 @@ class ArchitectBackend(Protocol):
 class StubArchitect:
     """Heuristic architect that proposes safe, reviewable SQL without MLX."""
 
-    def __init__(self):
+    def __init__(self, db=None):
+        """``db``: a ``Database``; defaults to the configured metrics DB on run()."""
+        self._db = db
         logger.info("StubArchitect enabled (no MLX)")
+
+    def _database(self):
+        if self._db is not None:
+            return self._db
+        try:
+            from ..common.database import get_metrics_db
+            return get_metrics_db()
+        except Exception as e:  # no config / no DB: still usable offline
+            logger.warning(f"StubArchitect: metrics DB unavailable ({e}); running without persistence")
+            return None
 
     def generate_recommendation(
         self,
@@ -46,7 +58,12 @@ class StubArchitect:
 
         if top is not None and getattr(top, "example_query", None):
             example = (top.example_query or "").strip().rstrip(";")
-            sql = f"EXPLAIN (ANALYZE, BUFFERS) {example};"
+            # EXPLAIN ANALYZE *executes* the statement, so only use it for reads;
+            # for INSERT/UPDATE/DELETE emit a plan-only EXPLAIN.
+            if (getattr(top, "query_type", "") or "").upper() == "SELECT":
+                sql = f"EXPLAIN (ANALYZE, BUFFERS) {example};"
+            else:
+                sql = f"EXPLAIN {example};"
             title = f"Explain high-impact query ({getattr(top, 'query_type', 'unknown')})"
             rationale = (
                 "Stub heuristic: highest impact_score query should be EXPLAINed before index changes."
@@ -74,5 +91,18 @@ class StubArchitect:
             confidence_score=0.4,
         )
 
-    def run(self) -> Optional[Recommendation]:
-        return self.generate_recommendation()
+    def run(self, save: bool = True) -> Optional[Recommendation]:
+        """Same loop as QwenArchitect.run: read snapshots, propose, persist."""
+        from . import store
+
+        db = self._database()
+        snapshots: List[WorkloadSnapshot] = []
+        if db is not None:
+            try:
+                snapshots = store.load_recent_workload_snapshots(db)
+            except Exception as e:
+                logger.warning(f"StubArchitect: could not load workload snapshots: {e}")
+        recommendation = self.generate_recommendation(workload_snapshots=snapshots)
+        if recommendation and save and db is not None:
+            store.save_recommendation(db, recommendation)
+        return recommendation

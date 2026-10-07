@@ -23,9 +23,31 @@ class DatabaseConfig(BaseModel):
     password_env: str
 
     def get_connection_string(self) -> str:
-        """Get SQLAlchemy connection string."""
+        """Get SQLAlchemy connection string.
+
+        - ``postgresql`` is pinned to the psycopg2 driver we ship in
+          requirements (SQLAlchemy 2.1 switched the default to psycopg 3).
+        - Credentials are URL-escaped, so passwords containing ``@``, ``:``
+          or ``/`` work.
+        - ``QWEN_DBA_DATABASE_URL`` overrides everything (CI / docker-compose).
+        """
+        override = os.getenv("QWEN_DBA_DATABASE_URL")
+        if override:
+            return override
+        from sqlalchemy.engine import URL
+
+        driver = self.type
+        if driver in ("postgresql", "postgres"):
+            driver = "postgresql+psycopg2"
         password = os.getenv(self.password_env, "")
-        return f"{self.type}://{self.username}:{password}@{self.host}:{self.port}/{self.database}"
+        return URL.create(
+            drivername=driver,
+            username=self.username,
+            password=password or None,
+            host=self.host,
+            port=self.port,
+            database=self.database,
+        ).render_as_string(hide_password=False)
 
 
 class VectorDBConfig(BaseModel):
@@ -121,16 +143,20 @@ class Config(BaseModel):
 _config: Optional[Config] = None
 
 
-def get_config(config_path: str = "config.yaml") -> Config:
-    """Get global configuration instance."""
+def _default_config_path() -> str:
+    return os.getenv("QWEN_DBA_CONFIG", "config.yaml")
+
+
+def get_config(config_path: Optional[str] = None) -> Config:
+    """Get global configuration instance (path: arg, $QWEN_DBA_CONFIG, config.yaml)."""
     global _config
     if _config is None:
-        _config = Config.load_from_file(config_path)
+        _config = Config.load_from_file(config_path or _default_config_path())
     return _config
 
 
-def reload_config(config_path: str = "config.yaml") -> Config:
-    """Reload configuration from file."""
+def reload_config(config_path: Optional[str] = None) -> Config:
+    """Reload configuration from file, replacing any cached instance."""
     global _config
-    _config = Config.load_from_file(config_path)
+    _config = Config.load_from_file(config_path or _default_config_path())
     return _config

@@ -21,3 +21,36 @@ jobs:
         run: pip install -r requirements-test.txt
       - name: Stub architect unit tests
         run: pytest tests/test_stub_architect.py -q
+
+  postgres-integration:
+    # Validates init-db + profile/eval/recommend DB writes against real Postgres (#2).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qwen
+          POSTGRES_PASSWORD: qwen
+          POSTGRES_DB: qwen_dba_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qwen -d qwen_dba_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      QWEN_ARCHITECT: stub
+      PYTHONPATH: src
+      QWEN_DBA_TEST_DATABASE_URL: postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: pip install -r requirements-test.txt
+      - name: Full test suite (unit + postgres integration)
+        run: pytest -q -rs
+      - name: Require the postgres tests to have run (not skipped)
+        run: pytest -q -m postgres -rs | tee pg.txt && ! grep -q skipped pg.txt

@@ -33,23 +33,32 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logger(name: str = "qwen_dba") -> logging.Logger:
-    """Set up logger with configuration."""
-    config = get_config()
+    """Set up logger with configuration.
+
+    Importing this module must not require a config file (or cache the
+    default one before the CLI's ``--config`` is applied), so fall back to
+    stdout/INFO when no config is loadable yet.
+    """
+    try:
+        logging_config = get_config().logging
+    except FileNotFoundError:
+        from .config import LoggingConfig
+        logging_config = LoggingConfig()
 
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, config.logging.level))
+    logger.setLevel(getattr(logging, logging_config.level))
 
     # Remove existing handlers
     logger.handlers = []
 
     # Create handler
-    if config.logging.output == "file" and config.logging.file_path:
-        handler = logging.FileHandler(config.logging.file_path)
+    if logging_config.output == "file" and logging_config.file_path:
+        handler = logging.FileHandler(logging_config.file_path)
     else:
         handler = logging.StreamHandler(sys.stdout)
 
     # Set formatter
-    if config.logging.format == "json":
+    if logging_config.format == "json":
         formatter = JsonFormatter()
     else:
         formatter = logging.Formatter(
