@@ -227,6 +227,8 @@ CREATE TABLE IF NOT EXISTS qwen_dba.stat_snapshots (
 CREATE INDEX IF NOT EXISTS idx_stat_snapshots_captured ON qwen_dba.stat_snapshots(captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stat_snapshots_queryid ON qwen_dba.stat_snapshots(queryid, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stat_snapshots_fingerprint ON qwen_dba.stat_snapshots(query_fingerprint);
+
+-- ============================================================================
 -- Human review queue for proposed writes (#5, #6)
 -- Nothing in proposed_writes is applied without passing the rules in
 -- qwen_dba/review/queue.py. Every action is recorded in review_audit.
