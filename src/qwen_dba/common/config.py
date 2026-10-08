@@ -62,6 +62,9 @@ class VectorDBConfig(BaseModel):
 class ProfilerConfig(BaseModel):
     """Workload profiler configuration."""
     enabled: bool = True
+    # "logs" (default, offline log files) or "pg_stat_statements" (live, #3)
+    source: str = "logs"
+    pg_stat_statements: Dict[str, Any] = Field(default_factory=dict)
     sources: Dict[str, Any] = Field(default_factory=dict)
     aggregation: Dict[str, Any] = Field(default_factory=dict)
     fingerprint: Dict[str, Any] = Field(default_factory=dict)

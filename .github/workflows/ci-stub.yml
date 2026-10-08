@@ -53,4 +53,34 @@ jobs:
       - name: Full test suite (unit + postgres integration)
         run: pytest -q -rs
       - name: Require the postgres tests to have run (not skipped)
-        run: pytest -q -m postgres -rs | tee pg.txt && ! grep -q skipped pg.txt
+        shell: bash  # pipefail, so a failing pytest isn't masked by tee
+        # pgss tests need the extension preloaded; they run in the pg-stat-statements job
+        run: pytest -q -m "postgres and not pgss" -rs | tee pg.txt && ! grep -q skipped pg.txt
+
+  pg-stat-statements:
+    # Live pg_stat_statements source + capture history (#3, #7). Service containers can't
+    # pass server flags, so start Postgres with the extension preloaded via docker run.
+    runs-on: ubuntu-latest
+    env:
+      QWEN_ARCHITECT: stub
+      PYTHONPATH: src
+      QWEN_DBA_TEST_DATABASE_URL: postgresql+psycopg2://qwen:qwen@localhost:5433/qwen_dba_test
+      QWEN_DBA_REQUIRE_PGSS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start Postgres with pg_stat_statements preloaded
+        run: |
+          docker run -d --name pgss -p 5433:5432 \
+            -e POSTGRES_USER=qwen -e POSTGRES_PASSWORD=qwen -e POSTGRES_DB=qwen_dba_test \
+            postgres:16-alpine -c shared_preload_libraries=pg_stat_statements
+          # Wait over TCP: the entrypoint's init-phase server only listens on the socket.
+          for i in $(seq 1 60); do docker exec -e PGPASSWORD=qwen pgss psql -h 127.0.0.1 -U qwen -d qwen_dba_test -c 'select 1' >/dev/null 2>&1 && break; sleep 1; done
+          docker exec -e PGPASSWORD=qwen pgss psql -h 127.0.0.1 -U qwen -d qwen_dba_test -c 'show shared_preload_libraries'
+      - name: Install test deps
+        run: pip install -r requirements-test.txt
+      - name: pg_stat_statements + history tests (must not skip)
+        shell: bash  # pipefail, so a failing pytest isn't masked by tee
+        run: pytest -q -rs tests/test_pg_stat_statements.py tests/test_pg_stat_statements_integration.py | tee pgss.txt && ! grep -q skipped pgss.txt
