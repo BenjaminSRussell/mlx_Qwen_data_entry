@@ -34,6 +34,10 @@ class QueryFingerprinter:
             normalized = normalized.upper()
 
         if self.normalize_literals:
+            # pg_stat_statements text: "IN ($1 /*, ... */)" list squashing (PG 18) and
+            # $N parameters normalize to the same "?" as log literals (#3).
+            normalized = re.sub(r'/\*\s*,\s*\.\.\.\s*\*/', '', normalized)
+            normalized = re.sub(r'\$\d+\b', '?', normalized)
             # String literals (single quotes); keep double-quoted identifiers
             normalized = re.sub(r"'([^']|'')*'", "?", normalized)
             # Numeric literals: replace full number tokens including decimals first

@@ -5,21 +5,48 @@ from typing import List, Optional
 from pathlib import Path
 
 from ..common.config import get_config
-from ..common.database import get_metrics_db
+from ..common.database import Database, get_metrics_db, get_primary_db
 from ..common.logger import logger
 from ..common.models import QueryLog, WorkloadSnapshot
 from .parsers import get_parser
 from .fingerprint import QueryFingerprinter
 from .aggregator import WorkloadAggregator
+from .pg_stat_statements import (
+    PgStatStatementsSource,
+    StatSnapshotStore,
+    delta_rows,
+    rows_to_snapshots,
+)
+
+SOURCES = ("logs", "pg_stat_statements")
+
+PGSS_DEFAULTS = {
+    "database": "primary",
+    "min_calls": 1,
+    "current_database_only": True,
+    "use_deltas": True,
+    "store_history": True,
+    "retention_days": 30,
+    "reset_after_read": False,
+}
 
 
 class WorkloadProfiler:
     """Main workload profiler that orchestrates log collection and aggregation."""
 
-    def __init__(self):
-        """Initialize profiler with configuration."""
+    def __init__(self, source: Optional[str] = None):
+        """Initialize profiler with configuration.
+
+        Args:
+            source: ``"logs"`` or ``"pg_stat_statements"``; overrides ``profiler.source``.
+        """
         self.config = get_config()
         self.db = get_metrics_db()
+        self.source = (source or getattr(self.config.profiler, "source", None) or "logs").strip().lower()
+        if self.source not in SOURCES:
+            raise ValueError(f"profiler.source must be one of {SOURCES}, got {self.source!r}")
+        self.pgss_settings = {**PGSS_DEFAULTS, **(getattr(self.config.profiler, "pg_stat_statements", None) or {})}
+        self._pending_capture = None  # (rows, captured_at, source) awaiting save_snapshots()
 
         # Initialize components
         fingerprint_config = self.config.profiler.fingerprint
@@ -90,6 +117,9 @@ class WorkloadProfiler:
         Returns:
             List of WorkloadSnapshot objects
         """
+        if query_logs is None and self.source == "pg_stat_statements":
+            return self._snapshots_from_pg_stat_statements()
+
         if query_logs is None:
             query_logs = self.collect_logs()
 
@@ -211,7 +241,80 @@ class WorkloadProfiler:
                 continue
 
         logger.info(f"Saved {saved_count} workload snapshots")
+        self._commit_pending_capture()
         return saved_count
+
+    # ------------------------------------------------------------------
+    # pg_stat_statements source (#3) and capture history (#7)
+    # ------------------------------------------------------------------
+
+    def _database(self, name: str) -> Database:
+        if name == "primary":
+            return get_primary_db()
+        if name == "metrics":
+            return get_metrics_db()
+        return Database(self.config.databases[name].get_connection_string())
+
+    def stat_store(self) -> StatSnapshotStore:
+        return StatSnapshotStore(self.db, self.fingerprinter)
+
+    def _pgss_source(self) -> PgStatStatementsSource:
+        s = self.pgss_settings
+        return PgStatStatementsSource(
+            self._database(s["database"]),
+            min_calls=s["min_calls"],
+            current_database_only=s["current_database_only"],
+        )
+
+    def _snapshots_from_pg_stat_statements(self) -> List[WorkloadSnapshot]:
+        s = self.pgss_settings
+        source = self._pgss_source()
+        rows = source.fetch()
+        captured_at = datetime.utcnow()
+        logger.info(f"Read {len(rows)} statements from pg_stat_statements")
+
+        window_start = source.stats_reset_at() or captured_at
+        previous = None
+        if s["use_deltas"] and s["store_history"]:
+            try:
+                store = self.stat_store()
+                prev_ts = store.latest_capture(before=captured_at)
+                if prev_ts is not None:
+                    previous = store.load_capture(prev_ts)
+                    window_start = prev_ts
+            except Exception as e:  # history table missing (run init-db) or unreadable
+                logger.warning(f"No pg_stat_statements history for deltas ({e}); using cumulative counters")
+        window_rows = delta_rows(rows, previous) if s["use_deltas"] else rows
+
+        self._pending_capture = (rows, captured_at, source)
+        return rows_to_snapshots(
+            window_rows, self.fingerprinter, captured_at, min(window_start, captured_at), captured_at,
+            min_calls=s["min_calls"],
+        )
+
+    def _commit_pending_capture(self) -> None:
+        """After snapshots are saved: record the capture, prune history, optionally reset."""
+        if not self._pending_capture:
+            return
+        rows, captured_at, source = self._pending_capture
+        self._pending_capture = None
+        s = self.pgss_settings
+        if s["store_history"]:
+            store = self.stat_store()
+            saved = store.save(rows, captured_at)
+            pruned = store.prune(retention_days=s["retention_days"])
+            logger.info(f"Stored {saved} pg_stat_statements rows (pruned {pruned} old)")
+        if s["reset_after_read"]:
+            source.reset()
+            logger.info("pg_stat_statements counters reset")
+
+    def capture_stat_history(self) -> int:
+        """Store one pg_stat_statements capture in qwen_dba.stat_snapshots (no workload snapshots)."""
+        rows = self._pgss_source().fetch()
+        store = self.stat_store()
+        saved = store.save(rows, datetime.utcnow())
+        store.prune(retention_days=self.pgss_settings["retention_days"])
+        return saved
 
     def run(self) -> int:
         """

@@ -30,6 +30,20 @@ vector_db:
 profiler:
   enabled: true
 
+  # Where workload metrics come from:
+  #   logs               - parse the log files under `sources` (default, works offline)
+  #   pg_stat_statements - read the pg_stat_statements view live (#3); see README
+  source: "logs"
+
+  pg_stat_statements:
+    database: "primary"        # which `databases` entry to read the view from
+    min_calls: 1               # ignore statements called fewer times
+    current_database_only: true
+    use_deltas: true           # per-window numbers = this capture minus the previous one
+    store_history: true        # keep every capture in qwen_dba.stat_snapshots (#7)
+    retention_days: 30         # prune captures older than this when saving (0 = keep all)
+    reset_after_read: false    # call pg_stat_statements_reset() after a saved capture (needs privilege)
+
   # Log sources
   sources:
     postgres_logs:
