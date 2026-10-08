@@ -229,6 +229,52 @@ CREATE INDEX IF NOT EXISTS idx_stat_snapshots_queryid ON qwen_dba.stat_snapshots
 CREATE INDEX IF NOT EXISTS idx_stat_snapshots_fingerprint ON qwen_dba.stat_snapshots(query_fingerprint);
 
 -- ============================================================================
+-- Human review queue for proposed writes (#5, #6)
+-- Nothing in proposed_writes is applied without passing the rules in
+-- qwen_dba/review/queue.py. Every action is recorded in review_audit.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS qwen_dba.proposed_writes (
+    id SERIAL PRIMARY KEY,
+    proposal_id VARCHAR(100) UNIQUE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',   -- pending, approved, rejected, applied, failed
+    title TEXT NOT NULL,
+    sql TEXT NOT NULL,                                -- proposed statement(s)
+    current_sql TEXT,                                 -- current definition/statement, for the diff
+    confidence NUMERIC(5, 4),
+    source VARCHAR(100) NOT NULL DEFAULT 'manual',    -- manual, architect
+    recommendation_id VARCHAR(100),                   -- recommendations.recommendation_id
+    target_db VARCHAR(100) NOT NULL DEFAULT 'primary',
+    parse_ok BOOLEAN NOT NULL DEFAULT FALSE,
+    parse_error TEXT,
+    destructive JSONB NOT NULL DEFAULT '[]'::jsonb,   -- reasons, e.g. DROP TABLE
+    reviewed_by VARCHAR(100),
+    reviewed_at TIMESTAMP,
+    reason TEXT,                                      -- required for rejects
+    applied_by VARCHAR(100),
+    applied_at TIMESTAMP,
+    apply_error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT proposed_writes_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'applied', 'failed')),
+    CONSTRAINT proposed_writes_reject_reason CHECK (status <> 'rejected' OR (reason IS NOT NULL AND reason <> ''))
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposed_writes_status ON qwen_dba.proposed_writes(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS qwen_dba.review_audit (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMP NOT NULL DEFAULT NOW(),
+    proposal_id VARCHAR(100) NOT NULL,
+    action VARCHAR(30) NOT NULL,                      -- propose, approve, reject, apply, apply_blocked, apply_failed
+    actor VARCHAR(100),
+    reason TEXT,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_audit_proposal ON qwen_dba.review_audit(proposal_id, id DESC);
+
+-- ============================================================================
 -- Views for Analysis
 -- ============================================================================
 
