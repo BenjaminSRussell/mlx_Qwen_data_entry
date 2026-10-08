@@ -62,13 +62,15 @@ def init_db(ctx):
 
 @cli.command()
 @click.option('--save/--no-save', default=True, help='Save snapshots to database')
+@click.option('--source', type=click.Choice(['logs', 'pg_stat_statements']), default=None,
+              help='Workload source (default: profiler.source in the config, else logs)')
 @click.pass_context
-def profile(ctx, save):
+def profile(ctx, save, source):
     """Run workload profiler to collect and aggregate query logs."""
     try:
         console.print("[cyan]Starting workload profiler...[/cyan]")
 
-        profiler = WorkloadProfiler()
+        profiler = WorkloadProfiler(source=source)
         snapshots = profiler.create_snapshots()
 
         if snapshots:
@@ -441,6 +443,50 @@ def review_audit(proposal_id, limit):
     for e in _review_queue().audit_log(proposal_id, limit):
         table.add_row(str(e["ts"])[:19], e["proposal_id"], e["action"], e["actor"] or "", e["reason"] or "")
     console.print(table)
+@cli.group()
+def stats():
+    """pg_stat_statements capture history (qwen_dba.stat_snapshots, #7)."""
+
+
+@stats.command('snapshot')
+def stats_snapshot():
+    """Store one pg_stat_statements capture (no workload snapshots)."""
+    n = WorkloadProfiler(source='pg_stat_statements').capture_stat_history()
+    console.print(f"[green]OK[/green] Captured {n} statements into qwen_dba.stat_snapshots")
+
+
+@stats.command('list')
+@click.option('--limit', default=20, help='Number of captures to show')
+def stats_list(limit):
+    """List stored captures, newest first."""
+    rows = WorkloadProfiler().stat_store().captures(limit)
+    table = Table(title="pg_stat_statements captures")
+    table.add_column("Captured at (UTC)", style="cyan")
+    table.add_column("Statements", justify="right")
+    table.add_column("Calls", justify="right")
+    for ts, n, calls in rows:
+        table.add_row(str(ts), f"{n:,}", f"{calls:,}")
+    console.print(table)
+
+
+@stats.command('prune')
+@click.option('--days', type=float, default=None, help='Delete captures older than N days (default: retention_days from config)')
+def stats_prune(days):
+    """Apply the retention policy to qwen_dba.stat_snapshots."""
+    profiler = WorkloadProfiler()
+    days = profiler.pgss_settings['retention_days'] if days is None else days
+    n = profiler.stat_store().prune(retention_days=days)
+    console.print(f"[green]OK[/green] Pruned {n} rows older than {days:g} days")
+
+
+@stats.command('export')
+@click.option('--csv', 'csv_path', required=True, type=click.Path(dir_okay=False), help='Output CSV path')
+@click.option('--since', type=click.DateTime(), default=None, help='Only captures at/after this UTC time')
+@click.option('--until', type=click.DateTime(), default=None, help='Only captures at/before this UTC time')
+def stats_export(csv_path, since, until):
+    """Export captures to CSV (one row per statement per capture) for notebooks."""
+    n = WorkloadProfiler().stat_store().export_csv(csv_path, since=since, until=until)
+    console.print(f"[green]OK[/green] Wrote {n} rows to {csv_path}")
 
 
 def main():

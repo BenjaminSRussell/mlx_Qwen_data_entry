@@ -198,6 +198,35 @@ CREATE INDEX IF NOT EXISTS idx_config_history_timestamp ON qwen_dba.config_histo
 CREATE INDEX IF NOT EXISTS idx_config_history_key ON qwen_dba.config_history(config_key);
 
 -- ============================================================================
+-- pg_stat_statements capture history (#7)
+-- Every capture of the pg_stat_statements view (cumulative counters as read).
+-- Consecutive captures give per-window deltas, and the retention job prunes old ones.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS qwen_dba.stat_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    captured_at TIMESTAMP NOT NULL,
+    queryid BIGINT,
+    dbid BIGINT,
+    userid BIGINT,
+    query_fingerprint TEXT NOT NULL,
+    query_type VARCHAR(50),
+    query TEXT,
+    calls BIGINT NOT NULL DEFAULT 0,
+    total_exec_time_ms DOUBLE PRECISION,
+    mean_exec_time_ms DOUBLE PRECISION,
+    stddev_exec_time_ms DOUBLE PRECISION,
+    min_exec_time_ms DOUBLE PRECISION,
+    max_exec_time_ms DOUBLE PRECISION,
+    rows BIGINT,
+    shared_blks_hit BIGINT,
+    shared_blks_read BIGINT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stat_snapshots_captured ON qwen_dba.stat_snapshots(captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stat_snapshots_queryid ON qwen_dba.stat_snapshots(queryid, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stat_snapshots_fingerprint ON qwen_dba.stat_snapshots(query_fingerprint);
 -- Human review queue for proposed writes (#5, #6)
 -- Nothing in proposed_writes is applied without passing the rules in
 -- qwen_dba/review/queue.py. Every action is recorded in review_audit.

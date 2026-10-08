@@ -101,8 +101,73 @@ The system creates these tables in the `qwen_dba` schema:
 - `eval_results`: Evaluation and SLO compliance results
 - `recommendations`: AI-generated optimization recommendations
 - `config_history`: Configuration change tracking
+- `stat_snapshots`: Every `pg_stat_statements` capture, kept for trends and deltas (#7)
 - `proposed_writes`: Review queue of proposed SQL writes (#5)
 - `review_audit`: Every review action, including blocked apply attempts (#5, #6)
+
+## Live metrics from pg_stat_statements (#3, #7)
+
+The profiler reads PostgreSQL log files by default, which works offline. To profile live workloads without shipping logs, read the `pg_stat_statements` extension instead:
+
+```yaml
+# config.yaml
+profiler:
+  source: "pg_stat_statements"      # default: "logs"
+  pg_stat_statements:
+    database: "primary"             # databases entry to read the view from
+    min_calls: 1
+    use_deltas: true                # per-window numbers = this capture minus the previous one
+    store_history: true             # keep each capture in qwen_dba.stat_snapshots
+    retention_days: 30              # prune older captures on save (0 = keep everything)
+    reset_after_read: false         # pg_stat_statements_reset() after a saved capture
+```
+
+Or pick the source per run:
+
+```bash
+qwen-dba profile --source pg_stat_statements
+```
+
+Rows from the view map onto the same `workload_snapshots` model and the same fingerprinter as the log path. `$1` parameters and log literals both normalize to `?`, so fingerprints line up across the two sources. Several `queryid`s that normalize to one pattern (for example, different users) are merged.
+
+`pg_stat_statements` doesn't record percentiles. **p50, p95 and p99 are estimates**: the mean, then `mean + 1.645·stddev` and `mean + 2.326·stddev`, capped at `max_exec_time`.
+
+**Enable the extension.** Changing `shared_preload_libraries` needs a server restart.
+
+```bash
+# postgresql.conf, or a server flag
+shared_preload_libraries = 'pg_stat_statements'
+# then, in the database you profile:
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+With docker compose, add a command to the postgres service:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+```
+
+**Privileges.**
+
+| Action | Needs |
+|---|---|
+| Read the view | `CONNECT` on the database. Without `pg_read_all_stats`, other users' query text shows as `<insufficient privilege>` and is skipped. Use `GRANT pg_read_all_stats TO qwen_dba;`. |
+| `reset_after_read: true` | Superuser, or `GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO qwen_dba;` (the full signature differs by version). |
+| Store history | `INSERT`/`DELETE` on `qwen_dba.stat_snapshots` in the metrics database (created by `qwen-dba init-db`). |
+
+If the extension is missing or not preloaded, the profiler stops with an error that explains how to fix it. The log parser keeps working.
+
+**Capture history (#7).** Each saved profile run, and each `qwen-dba stats snapshot`, stores the raw cumulative rows in `qwen_dba.stat_snapshots`. Columns: `captured_at`, `queryid`, `dbid`, `userid`, `query_fingerprint`, `query_type`, `query`, `calls`, `total/mean/stddev/min/max_exec_time_ms`, `rows`, `shared_blks_hit` and `shared_blks_read`. Consecutive captures coexist, and the next run uses the previous capture to compute per-window deltas. A counter reset is detected, and the current values are used as-is.
+
+```bash
+qwen-dba stats snapshot                       # capture only (e.g. from cron every 5 min)
+qwen-dba stats list                           # captures, newest first
+qwen-dba stats prune --days 30                # retention (also runs automatically on save)
+qwen-dba stats export --csv stats.csv --since 2026-10-01   # for notebooks: pandas.read_csv("stats.csv")
+```
 
 ## Human review queue for proposed writes (#5, #6)
 
@@ -172,6 +237,11 @@ PYTHONPATH=src pytest -q          # unit tests; Postgres tests skip without a DB
 docker compose up -d postgres
 export QWEN_DBA_TEST_DATABASE_URL=postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test
 PYTHONPATH=src pytest -q -m postgres
+
+# Live pg_stat_statements test: needs the extension preloaded (see above), e.g.
+#   docker run -d -p 5433:5432 -e POSTGRES_USER=qwen -e POSTGRES_PASSWORD=qwen -e POSTGRES_DB=qwen_dba_test \
+#     postgres:16-alpine -c shared_preload_libraries=pg_stat_statements
+QWEN_DBA_REQUIRE_PGSS=1 PYTHONPATH=src pytest -q -m pgss
 ```
 
 `QWEN_DBA_DATABASE_URL` overrides the connection strings in `config.yaml`. `QWEN_DBA_CONFIG` (or `--config`) selects the config file.

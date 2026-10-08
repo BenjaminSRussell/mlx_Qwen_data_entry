@@ -91,7 +91,7 @@ The evaluators were initializing database connections even when not needed. Fixe
 - Model download is 4GB+ (slow on first run)
 
 ### Missing Features
-- No integration with pg_stat_statements (currently only reads log files)
+- ~~No integration with pg_stat_statements~~: `profiler.source: pg_stat_statements` reads live metrics, with capture history in `qwen_dba.stat_snapshots` (#3, #7)
 - No workload replay capability (planned for Phase 2)
 - No automated PR generation (planned for Phase 2)
 - No shadow environment testing (planned for Phase 2)
@@ -125,7 +125,7 @@ Detailed breakdown:
 1. Error handling for all edge cases
 2. Comprehensive logging
 3. Monitoring integration
-4. pg_stat_statements integration for live metrics
+4. ~~pg_stat_statements integration for live metrics~~ (done: #3, #7)
 5. Large log file stress testing (10GB+)
 
 ### Nice to Have
