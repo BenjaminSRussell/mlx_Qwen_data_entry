@@ -117,6 +117,11 @@ architect:
   schedule:
     cron: "0 2 * * *"  # Daily at 2 AM
 
+# Human review queue for proposed writes (#5, #6): `qwen-dba review --help`
+review:
+  mode: true                    # REVIEW_MODE=1/0 overrides. On = nothing applies without approval
+  enqueue_recommendations: true # queue each recommendation's migration_sql for review
+
 # Logging
 logging:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR

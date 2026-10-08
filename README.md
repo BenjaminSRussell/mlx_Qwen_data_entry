@@ -101,6 +101,47 @@ The system creates these tables in the `qwen_dba` schema:
 - `eval_results`: Evaluation and SLO compliance results
 - `recommendations`: AI-generated optimization recommendations
 - `config_history`: Configuration change tracking
+- `proposed_writes`: Review queue of proposed SQL writes (#5)
+- `review_audit`: Every review action, including blocked apply attempts (#5, #6)
+
+## Human review queue for proposed writes (#5, #6)
+
+Proposed SQL is never applied until it passes review. With **review mode on**, nothing can be applied until a reviewer approves it. Review mode is the default; turn it off with `review.mode` or `REVIEW_MODE=1/0`. The rules are enforced in `qwen_dba/review/queue.py`, so every interface gets them:
+
+| Rule | Behaviour |
+|---|---|
+| Approval gate | With `REVIEW_MODE=1`, `apply` is refused unless the proposal is `approved`. |
+| Explicit confirm | `apply` always needs confirmation. The CLI shows the diff and asks `[y/N]`; scripts pass `--confirm`. |
+| Parse gate | SQL is parsed with the real PostgreSQL parser ([pglast](https://github.com/lelit/pglast), libpg_query). If it doesn't parse, it can't be approved or applied. |
+| Destructive flags | DROP, TRUNCATE, DELETE/UPDATE without WHERE, and ALTER ... DROP or column type changes are flagged in `list`, `show` and the apply prompt. |
+| Rejects keep a reason | `reject` needs `--reason`. The row stays in the queue as `rejected` with the reason; a DB `CHECK` enforces it. |
+| Audit | `propose`, `approve`, `reject`, `apply`, `apply_blocked` and `apply_failed` are written to `qwen_dba.review_audit` with actor, reason and details. |
+| Atomic apply | The SQL runs in one transaction on its target database. On error, everything rolls back and the proposal becomes `failed`. |
+
+`qwen-dba recommend` queues each recommendation's `migration_sql` automatically (`review.enqueue_recommendations`).
+
+**Linux / stub path:** no Apple Silicon or MLX needed.
+
+```bash
+docker compose up -d postgres
+export QWEN_DBA_DATABASE_URL=postgresql+psycopg2://qwen:qwen@localhost:5432/qwen_dba_test
+export QWEN_ARCHITECT=stub REVIEW_MODE=1 PYTHONPATH=src
+python -m qwen_dba.cli init-db
+python -m qwen_dba.cli profile && python -m qwen_dba.cli recommend   # -> "Queued for review as pw-..."
+
+python -m qwen_dba.cli review list --status pending
+python -m qwen_dba.cli review show pw-...                  # unified diff current -> proposed, flags
+python -m qwen_dba.cli review approve pw-... --by ben
+python -m qwen_dba.cli review apply pw-... --by ben        # shows the diff again, asks to confirm
+python -m qwen_dba.cli review reject pw-... --by ben --reason "no WHERE clause"
+python -m qwen_dba.cli review audit pw-...
+
+# Manual proposals, with the current definition to diff against (fixture in examples/review/):
+python -m qwen_dba.cli review propose --file examples/review/proposed_query.sql \
+    --current-file examples/review/current_query.sql --title "narrow orders query"
+```
+
+The diff is a unified diff of the **prettified** current and proposed SQL, so formatting and comments don't show up as changes. A proposal with no current SQL, such as a new index, shows as all additions.
 
 ## Future Phases
 

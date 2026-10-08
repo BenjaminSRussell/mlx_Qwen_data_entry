@@ -108,6 +108,14 @@ class MetricsConfig(BaseModel):
     path: str = "/metrics"
 
 
+class ReviewConfig(BaseModel):
+    """Human review queue for proposed writes (#5)."""
+    # REVIEW_MODE env (1/0) overrides this. On = nothing applies without approval.
+    mode: bool = True
+    # Queue each architect recommendation's migration_sql for review.
+    enqueue_recommendations: bool = True
+
+
 class Config(BaseModel):
     """Main configuration for Qwen-DBA."""
     databases: Dict[str, DatabaseConfig]
@@ -117,6 +125,7 @@ class Config(BaseModel):
     architect: ArchitectConfig = Field(default_factory=ArchitectConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
 
     @classmethod
     def load_from_file(cls, config_path: str = "config.yaml") -> "Config":
